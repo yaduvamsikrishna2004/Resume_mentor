@@ -1,0 +1,30 @@
+@import url("https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;600;700&family=Space+Grotesk:wght@500;700&display=swap");
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color: #e4edf5;
+  background-color: #071421;
+  font-family: "Public Sans", sans-serif;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at 15% 15%, rgba(19, 181, 165, 0.3), transparent 35%),
+    radial-gradient(circle at 80% 0%, rgba(65, 116, 214, 0.35), transparent 40%),
+    linear-gradient(150deg, #071421 0%, #11233a 45%, #0c182a 100%);
+}
+
+#root {
+  min-height: 100vh;
+}
+
+.glass-card {
+  background: rgba(10, 28, 45, 0.72);
+  border: 1px solid rgba(159, 243, 223, 0.18);
+  backdrop-filter: blur(8px);
+}
