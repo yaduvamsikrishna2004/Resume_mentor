@@ -114,13 +114,27 @@ def mentor_chat(payload: MentorChatRequest) -> ApiResponse:
 def api_chat(payload: ChatApiRequest, request: Request):
     """Production chat endpoint for frontend chatbot integration."""
     try:
+        document = None
         resume_text = (payload.resume_text or "").strip()
         if payload.resume_id and not resume_text:
             document = get_resume_by_id(payload.resume_id)
             resume_text = document.get("raw_text", "")
 
+        if payload.resume_id and document is None:
+            try:
+                document = get_resume_by_id(payload.resume_id)
+            except Exception:
+                document = None
+
+        extracted_skills = payload.resume_context.get("extracted_skills")
+        if extracted_skills is None and document:
+            extracted_skills = (document.get("extracted") or {}).get("skills", [])
+
         prompt_context = {
             **payload.resume_context,
+            "resume_text": resume_text,
+            "extracted_skills": extracted_skills or [],
+            "ats_score": payload.resume_context.get("ats_score"),
             "job_description": payload.job_description or payload.resume_context.get("job_description", ""),
         }
 

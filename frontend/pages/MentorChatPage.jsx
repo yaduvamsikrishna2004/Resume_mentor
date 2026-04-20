@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
-import { Bookmark } from "lucide-react";
+import { Bookmark, Bot, Copy, RotateCcw, SendHorizontal, User, Wand2 } from "lucide-react";
 import { Link } from "react-router-dom";
 
 import { improveResume, streamMentorChat } from "../src/api/client";
@@ -10,18 +10,20 @@ function MentorChatPage() {
   const { state, actions } = useResumeMentor();
   const [isLoading, setIsLoading] = useState(false);
   const [isImproving, setIsImproving] = useState(false);
+  const [draft, setDraft] = useState("");
   const [error, setError] = useState("");
   const [serviceNotice, setServiceNotice] = useState("");
-  const [thinkingMessage, setThinkingMessage] = useState("");
+  const [thinkingMessage, setThinkingMessage] = useState("Analyzing resume...");
   const chatWindowRef = useRef(null);
+  const streamQueueRef = useRef([]);
+  const streamTimerRef = useRef(null);
+  const streamActiveRef = useRef(false);
+  const thinkingTimerRef = useRef(null);
 
-  useEffect(() => {
-    const node = chatWindowRef.current;
-    if (!node) {
-      return;
-    }
-    node.scrollTo({ top: node.scrollHeight, behavior: "smooth" });
-  }, [state.mentorChatHistory, isLoading]);
+  const atsImpact = useMemo(() => {
+    const missingCount = Number(state.comparison?.missing_skills?.length || 0);
+    return Math.max(6, Math.min(22, missingCount * 3));
+  }, [state.comparison?.missing_skills]);
 
   const mentorContext = useMemo(
     () => ({
@@ -44,24 +46,103 @@ function MentorChatPage() {
     ]
   );
 
-  async function sendMentorMessage(message, formElement = null) {
-    if (!message) {
-      setError("Please enter a question for the mentor.");
+  useEffect(() => {
+    const node = chatWindowRef.current;
+    if (!node) {
+      return;
+    }
+    node.scrollTo({ top: node.scrollHeight, behavior: "smooth" });
+  }, [state.mentorChatHistory, isLoading]);
+
+  useEffect(() => {
+    return () => {
+      if (streamTimerRef.current) {
+        clearInterval(streamTimerRef.current);
+      }
+      if (thinkingTimerRef.current) {
+        clearInterval(thinkingTimerRef.current);
+      }
+    };
+  }, []);
+
+  function startThinkingCycle() {
+    const phases = ["Analyzing resume...", "Matching skills with job description..."];
+    let index = 0;
+    setThinkingMessage(phases[0]);
+    if (thinkingTimerRef.current) {
+      clearInterval(thinkingTimerRef.current);
+    }
+    thinkingTimerRef.current = setInterval(() => {
+      index = (index + 1) % phases.length;
+      setThinkingMessage(phases[index]);
+    }, 1250);
+  }
+
+  function stopThinkingCycle() {
+    if (thinkingTimerRef.current) {
+      clearInterval(thinkingTimerRef.current);
+      thinkingTimerRef.current = null;
+    }
+  }
+
+  function enqueueChunkWordByWord(chunk) {
+    const tokens = String(chunk || "").split(/(\s+)/).filter((token) => token.length);
+    streamQueueRef.current.push(...tokens);
+    if (streamTimerRef.current) {
+      return;
+    }
+    streamTimerRef.current = setInterval(() => {
+      if (!streamQueueRef.current.length) {
+        if (!streamActiveRef.current) {
+          clearInterval(streamTimerRef.current);
+          streamTimerRef.current = null;
+        }
+        return;
+      }
+      const token = streamQueueRef.current.shift();
+      actions.appendToLastMentorMessage(token);
+    }, 28);
+  }
+
+  function findPreviousUserMessage(index) {
+    for (let cursor = index - 1; cursor >= 0; cursor -= 1) {
+      const item = state.mentorChatHistory[cursor];
+      if (item?.role === "user" && item?.content) {
+        return item.content;
+      }
+    }
+    return "";
+  }
+
+  async function sendMentorMessage(message, options = {}) {
+    const { showUser = true } = options;
+    const cleanedMessage = String(message || "").trim();
+    if (!cleanedMessage) {
+      setError("Ask a question to start the conversation.");
       return;
     }
 
     setError("");
     setServiceNotice("");
-    setThinkingMessage("Analyzing your resume...");
     setIsLoading(true);
-    actions.pushMentorMessage({ role: "user", content: message });
+    streamActiveRef.current = true;
+    streamQueueRef.current = [];
+    startThinkingCycle();
+
+    if (showUser) {
+      actions.pushMentorMessage({ role: "user", content: cleanedMessage });
+    }
     actions.pushMentorMessage({ role: "assistant", content: "" });
-    const effectiveHistory = [...state.mentorChatHistory, { role: "user", content: message }].slice(-10);
+
+    const effectiveHistory = [
+      ...state.mentorChatHistory,
+      ...(showUser ? [{ role: "user", content: cleanedMessage }] : []),
+    ].slice(-10);
 
     try {
       await streamMentorChat(
         {
-          message,
+          message: cleanedMessage,
           resumeId: state.resumeId || undefined,
           resumeText: state.rawResumeText || state.rawTextPreview || "",
           jobDescription: state.lastJobDescription || "",
@@ -75,37 +156,62 @@ function MentorChatPage() {
               setThinkingMessage(meta.message);
             }
           },
-          onChunk: (chunk) => {
-            actions.appendToLastMentorMessage(chunk);
-          },
+          onChunk: (chunk) => enqueueChunkWordByWord(chunk),
           onDone: (meta) => {
             const latencyMs = Number(meta?.latency_ms || meta?.stream_latency_ms || 0);
             if (meta?.source === "fallback") {
-              setServiceNotice("Gemini is currently degraded. You received fallback guidance.");
+              setServiceNotice("AI is temporarily unavailable. Fallback guidance was provided.");
             } else if (latencyMs > 9000) {
-              setServiceNotice(`AI response took ${(latencyMs / 1000).toFixed(1)}s due to temporary service load.`);
+              setServiceNotice(`Response took ${(latencyMs / 1000).toFixed(1)}s due to temporary load.`);
             }
-            setThinkingMessage("");
           }
         }
       );
-      if (formElement) {
-        formElement.reset();
-      }
     } catch (chatError) {
-      setError(chatError.message || "AI is temporarily unavailable. Please try again.");
-      setThinkingMessage("");
+      setError(chatError.message || "AI is temporarily unavailable. Please retry.");
     } finally {
+      streamActiveRef.current = false;
       setIsLoading(false);
+      stopThinkingCycle();
     }
   }
 
-  async function handleMentorChat(event) {
+  async function handleSubmit(event) {
     event.preventDefault();
-    const formElement = event.currentTarget;
-    const formData = new FormData(formElement);
-    const message = String(formData.get("mentorQuestion") || "").trim();
-    await sendMentorMessage(message, formElement);
+    const message = draft.trim();
+    setDraft("");
+    await sendMentorMessage(message, { showUser: true });
+  }
+
+  async function handleRegenerate(index) {
+    const previousUserMessage = findPreviousUserMessage(index);
+    if (!previousUserMessage) {
+      setError("Could not find the related user message to regenerate.");
+      return;
+    }
+    await sendMentorMessage(`${previousUserMessage}\n\nRegenerate the answer with stronger depth and specificity.`, { showUser: false });
+  }
+
+  async function handleImproveAnswer(index) {
+    const previousUserMessage = findPreviousUserMessage(index);
+    const assistantMessage = state.mentorChatHistory[index]?.content || "";
+    if (!previousUserMessage || !assistantMessage) {
+      setError("Could not improve this answer.");
+      return;
+    }
+    await sendMentorMessage(
+      `Improve this previous answer with better structure, stronger ATS guidance, and clearer bullet rewrites.\n\nUser: ${previousUserMessage}\n\nCurrent Answer:\n${assistantMessage}`,
+      { showUser: false }
+    );
+  }
+
+  async function handleCopy(text) {
+    try {
+      await navigator.clipboard.writeText(text || "");
+      setServiceNotice("Copied to clipboard.");
+    } catch {
+      setError("Unable to copy this message.");
+    }
   }
 
   async function handleExplainAtsScore() {
@@ -113,9 +219,7 @@ function MentorChatPage() {
       setError("Run skill-gap analysis first to explain ATS score.");
       return;
     }
-    setError("");
-    const atsPrompt = `Explain my ATS score of ${state.comparison.ats_score}% and list the top 3 fixes.`;
-    await sendMentorMessage(atsPrompt);
+    await sendMentorMessage(`Explain my ATS score of ${state.comparison.ats_score}% and list top 3 fixes.`, { showUser: true });
   }
 
   async function handleImproveResume() {
@@ -133,10 +237,7 @@ function MentorChatPage() {
         improvement: response.data.improvement,
         meta: response.data.meta
       });
-      actions.pushMentorMessage({
-        role: "assistant",
-        content: `Created a new resume version with ${response.data.improvement?.improved_bullets?.length || 0} improved bullets.`
-      });
+      await sendMentorMessage("I generated improved resume bullets. Please summarize the strongest 3 upgrades for recruiters.", { showUser: false });
     } catch (improveError) {
       setError(improveError.message || "Failed to improve resume.");
     } finally {
@@ -145,55 +246,65 @@ function MentorChatPage() {
   }
 
   return (
-    <section className="space-y-4">
-      <section className="glass-card rounded-3xl p-4 sm:p-6">
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+    <section className="glass-card-strong relative flex min-h-[calc(100vh-8.5rem)] flex-col overflow-hidden rounded-3xl">
+      <header className="border-b border-cyan-100/20 px-4 py-4 sm:px-6">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <p className="font-display text-lg text-white">Realtime AI Resume Chat</p>
-            <p className="text-sm text-cyan-100/80">
-              Context-aware mentor responses using resume content, ATS score, and job description.
-            </p>
+            <p className="font-display text-lg text-white">AI Resume Agent</p>
+            <p className="text-sm text-cyan-100/80">Conversational, context-aware mentoring with live streaming responses.</p>
           </div>
           <div className="flex gap-2">
             <button
               type="button"
               onClick={() => actions.saveMentorChatSession(`Session ${new Date().toLocaleTimeString()}`)}
-              className="rounded-2xl bg-cyan-100/15 px-3 py-2 text-xs font-semibold text-cyan-50 transition hover:bg-cyan-100/25"
+              className="rounded-full bg-cyan-100/15 px-3 py-1.5 text-xs font-semibold text-cyan-50 transition hover:bg-cyan-100/25"
             >
               <span className="inline-flex items-center gap-1">
-                <Bookmark size={14} />
-                Save Chat
+                <Bookmark size={13} />
+                Save
               </span>
             </button>
             <button
               type="button"
               onClick={actions.resetMentorChat}
-              className="rounded-2xl bg-cyan-100/15 px-3 py-2 text-xs font-semibold text-cyan-50 transition hover:bg-cyan-100/25"
+              className="rounded-full bg-cyan-100/15 px-3 py-1.5 text-xs font-semibold text-cyan-50 transition hover:bg-cyan-100/25"
             >
-              Clear Chat
+              Clear
             </button>
           </div>
         </div>
+      </header>
 
-        <div ref={chatWindowRef} className="max-h-[520px] overflow-y-auto pr-1">
-          <div className="flex flex-col gap-3">
-            {state.mentorChatHistory.map((message, index) => {
-              const isAssistant = message.role === "assistant";
-              const isLatest = index === state.mentorChatHistory.length - 1;
-              return (
-                <motion.div
-                  key={`${message.role}-${index}`}
-                  initial={{ opacity: 0, y: 8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className={`max-w-3xl whitespace-pre-wrap rounded-2xl px-4 py-3 text-sm sm:text-base ${
+      <div ref={chatWindowRef} className="flex-1 overflow-y-auto px-4 py-5 sm:px-6">
+        <div className="space-y-4">
+          {state.mentorChatHistory.map((message, index) => {
+            const isAssistant = message.role === "assistant";
+            const isLatest = index === state.mentorChatHistory.length - 1;
+            const showCursor = isAssistant && isLatest && isLoading && Boolean(message.content);
+
+            return (
+              <motion.div
+                key={`${message.role}-${index}`}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className={`flex items-start gap-3 ${isAssistant ? "justify-start" : "justify-end"}`}
+              >
+                {isAssistant ? (
+                  <div className="mt-1 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-cyan-100/15 text-cyan-50">
+                    <Bot size={16} />
+                  </div>
+                ) : null}
+
+                <article
+                  className={`max-w-[78%] whitespace-pre-wrap rounded-2xl px-4 py-3 text-sm sm:text-base ${
                     isAssistant
-                      ? "self-start bg-cyan-100/15 text-cyan-50"
-                      : "self-end bg-accent text-surface font-semibold"
+                      ? "glass-card text-cyan-50"
+                      : "bg-gradient-to-br from-teal-300 to-cyan-400 text-slate-900 shadow-[0_0_24px_rgba(102,242,255,0.35)]"
                   }`}
                 >
                   {message.content || (
                     <span className="inline-flex items-center gap-2 text-cyan-100/80">
-                      {thinkingMessage || "Thinking"}
+                      {thinkingMessage}
                       <span className="inline-flex gap-1">
                         <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-cyan-100 [animation-delay:-0.3s]" />
                         <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-cyan-100 [animation-delay:-0.15s]" />
@@ -201,78 +312,104 @@ function MentorChatPage() {
                       </span>
                     </span>
                   )}
-                  {isAssistant && isLatest && isLoading && message.content ? (
-                    <span className="ml-1 inline-block h-4 w-[2px] animate-pulse bg-cyan-100 align-middle" />
-                  ) : null}
-                </motion.div>
-              );
-            })}
-          </div>
-        </div>
+                  {showCursor ? <span className="ml-1 inline-block h-4 w-[2px] animate-pulse bg-cyan-100 align-middle" /> : null}
 
-        <form onSubmit={handleMentorChat} className="mt-5 flex flex-col gap-3">
-          <label htmlFor="mentorQuestion" className="font-display text-sm uppercase tracking-wide text-cyan-100">
-            Your Question
-          </label>
-          <textarea
-            id="mentorQuestion"
-            name="mentorQuestion"
-            rows={4}
-            required
-            placeholder="Example: Rewrite my Python project bullet to show stronger impact for backend internships."
-            className="w-full rounded-2xl border border-cyan-100/20 bg-slate-900/70 px-4 py-3 text-cyan-50 outline-none transition focus:border-accent"
-            disabled={isLoading}
-          />
-          <div className="grid gap-2 sm:grid-cols-2">
-            <button
-              type="submit"
-              disabled={isLoading}
-              className="w-full rounded-2xl bg-accent px-4 py-3 font-semibold text-surface transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-70"
-            >
-              {isLoading ? "Mentor is typing..." : "Send Message"}
-            </button>
-            <button
-              type="button"
-              disabled={isImproving}
-              onClick={handleImproveResume}
-              className="w-full rounded-2xl bg-cyan-100/15 px-4 py-3 font-semibold text-cyan-50 transition hover:bg-cyan-100/25 disabled:cursor-not-allowed disabled:opacity-70"
-            >
-              {isImproving ? "Improving..." : "Improve Resume"}
-            </button>
-          </div>
+                  {isAssistant && message.content ? (
+                    <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-cyan-100/15 pt-2 text-xs">
+                      <span className="rounded-full bg-cyan-100/10 px-2 py-1 text-cyan-100">Confidence: High</span>
+                      <span className="rounded-full bg-emerald-100/10 px-2 py-1 text-emerald-100">ATS Impact: +{atsImpact}%</span>
+                    </div>
+                  ) : null}
+
+                  {isAssistant && message.content ? (
+                    <div className="mt-2 flex gap-2 text-xs">
+                      <button
+                        type="button"
+                        onClick={() => handleCopy(message.content)}
+                        className="inline-flex items-center gap-1 rounded-full bg-cyan-100/10 px-2 py-1 text-cyan-50 transition hover:bg-cyan-100/20"
+                      >
+                        <Copy size={12} />
+                        Copy
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleRegenerate(index)}
+                        disabled={isLoading}
+                        className="inline-flex items-center gap-1 rounded-full bg-cyan-100/10 px-2 py-1 text-cyan-50 transition hover:bg-cyan-100/20 disabled:opacity-60"
+                      >
+                        <RotateCcw size={12} />
+                        Regenerate
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleImproveAnswer(index)}
+                        disabled={isLoading}
+                        className="inline-flex items-center gap-1 rounded-full bg-cyan-100/10 px-2 py-1 text-cyan-50 transition hover:bg-cyan-100/20 disabled:opacity-60"
+                      >
+                        <Wand2 size={12} />
+                        Improve
+                      </button>
+                    </div>
+                  ) : null}
+                </article>
+
+                {!isAssistant ? (
+                  <div className="mt-1 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-cyan-100/15 text-cyan-50">
+                    <User size={15} />
+                  </div>
+                ) : null}
+              </motion.div>
+            );
+          })}
+        </div>
+      </div>
+
+      <div className="sticky bottom-0 border-t border-cyan-100/20 bg-[#071328]/85 px-4 py-3 backdrop-blur-xl sm:px-6">
+        <div className="mb-2 flex flex-wrap gap-2">
+          <button
+            type="button"
+            disabled={isImproving || isLoading}
+            onClick={handleImproveResume}
+            className="rounded-full border border-cyan-100/25 bg-cyan-100/10 px-3 py-1 text-xs font-semibold text-cyan-50 transition hover:bg-cyan-100/20 disabled:opacity-60"
+          >
+            {isImproving ? "Improving..." : "Improve Resume"}
+          </button>
           <button
             type="button"
             disabled={isLoading}
             onClick={handleExplainAtsScore}
-            className="w-full rounded-2xl border border-cyan-100/25 bg-cyan-100/10 px-4 py-2 text-sm font-semibold text-cyan-50 transition hover:bg-cyan-100/20 disabled:cursor-not-allowed disabled:opacity-70"
+            className="rounded-full border border-cyan-100/25 bg-cyan-100/10 px-3 py-1 text-xs font-semibold text-cyan-50 transition hover:bg-cyan-100/20 disabled:opacity-60"
           >
             Explain ATS Score
           </button>
-        </form>
-      </section>
+        </div>
 
-      {state.savedMentorChats.length ? (
-        <section className="glass-card rounded-3xl p-4 sm:p-5">
-          <p className="mb-3 font-display text-base text-white">Saved Chat Sessions</p>
-          <div className="grid gap-2 sm:grid-cols-2">
-            {state.savedMentorChats.slice(0, 6).map((session) => (
-              <button
-                key={session.id}
-                type="button"
-                onClick={() => actions.loadMentorChatSession(session.id)}
-                className="rounded-2xl border border-cyan-100/20 bg-cyan-100/5 px-3 py-2 text-left text-xs text-cyan-100 transition hover:bg-cyan-100/10"
-              >
-                <p className="font-semibold text-cyan-50">{session.label}</p>
-                <p>{new Date(session.timestamp).toLocaleString()}</p>
-              </button>
-            ))}
+        <form onSubmit={handleSubmit} className="relative">
+          <div className="glow-ring relative flex items-end gap-2 rounded-2xl border border-cyan-100/25 bg-slate-900/80 px-3 py-2 shadow-[0_0_26px_rgba(96,239,255,0.15)]">
+            <textarea
+              name="mentorQuestion"
+              rows={2}
+              required
+              value={draft}
+              onChange={(event) => setDraft(event.target.value)}
+              placeholder="Ask for bullet rewrites, ATS fixes, skill-gap strategy..."
+              className="max-h-32 w-full resize-none bg-transparent text-sm text-cyan-50 outline-none placeholder:text-cyan-100/55"
+              disabled={isLoading}
+            />
+            <button
+              type="submit"
+              disabled={isLoading || !draft.trim()}
+              className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-accent text-surface transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <SendHorizontal size={16} />
+            </button>
           </div>
-        </section>
-      ) : null}
+        </form>
+      </div>
 
       {!state.resumeId ? (
-        <p className="rounded-2xl border border-amber-200/30 bg-amber-200/10 px-4 py-3 text-sm text-amber-100">
-          Upload your resume for more personalized coaching.
+        <p className="mx-4 mb-3 rounded-xl border border-amber-200/30 bg-amber-200/10 px-3 py-2 text-xs text-amber-100 sm:mx-6">
+          Upload your resume for richer context.
           <Link to="/upload" className="ml-2 font-semibold underline underline-offset-2">
             Upload now
           </Link>
@@ -280,13 +417,15 @@ function MentorChatPage() {
       ) : null}
 
       {serviceNotice ? (
-        <p className="rounded-2xl border border-cyan-200/30 bg-cyan-200/10 px-4 py-3 text-sm text-cyan-100">
+        <p className="mx-4 mb-3 rounded-xl border border-cyan-200/30 bg-cyan-200/10 px-3 py-2 text-xs text-cyan-100 sm:mx-6">
           {serviceNotice}
         </p>
       ) : null}
 
       {error ? (
-        <p className="rounded-2xl border border-rose-200/30 bg-rose-200/10 px-4 py-3 text-sm text-rose-100">{error}</p>
+        <p className="mx-4 mb-4 rounded-xl border border-rose-200/30 bg-rose-200/10 px-3 py-2 text-xs text-rose-100 sm:mx-6">
+          {error}
+        </p>
       ) : null}
     </section>
   );

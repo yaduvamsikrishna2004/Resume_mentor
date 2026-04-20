@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import time
 from typing import Any
 
@@ -16,7 +17,7 @@ logger = logging.getLogger(__name__)
 def _normalize_history(history: list[dict[str, Any]]) -> list[dict[str, str]]:
     """Normalize and truncate chat history for prompt context."""
     normalized: list[dict[str, str]] = []
-    for item in history[-6:]:
+    for item in history[-10:]:
         role = str(item.get("role", "")).strip().lower()
         content = str(item.get("content", "")).strip()
         if not content:
@@ -28,27 +29,98 @@ def _normalize_history(history: list[dict[str, Any]]) -> list[dict[str, str]]:
 
 
 def _build_prompt(message: str, resume_text: str, chat_history: list[dict[str, str]], extra_context: dict[str, Any]) -> str:
-    """Build a structured resume-mentor prompt with ATS context and conversation memory."""
+    """Build a strict recruiter-grade resume mentor prompt."""
     history_blob = json.dumps(chat_history, ensure_ascii=True)
     context_blob = json.dumps(extra_context or {}, ensure_ascii=True, default=str)
     resume_blob = resume_text[:2600]
     job_description = str(extra_context.get("job_description", "") or "").strip()[:1800]
+    extracted_skills = extra_context.get("extracted_skills", [])
+    ats_score = extra_context.get("ats_score", "Unknown")
 
     return (
-        "You are an expert AI resume mentor.\n\n"
+        "System role: You are a strict resume reviewer.\n"
+        "You are an expert AI Resume Mentor with deep knowledge of ATS systems, hiring practices, and technical roles.\n"
+        "Act like a senior recruiter + career coach and provide high-quality, structured, actionable feedback.\n\n"
+        "STRICT INSTRUCTIONS:\n"
+        "1) Always respond in this exact structure and section order:\n\n"
+        "🔍 ATS SCORE ANALYSIS\n"
+        "- Explain WHY the score is low/high with specific reasons.\n\n"
+        "🚨 TOP ISSUES (3-5 points)\n"
+        "- Be very specific.\n"
+        "- Reference actual missing skills, mismatches, or resume problems.\n\n"
+        "✅ IMPROVEMENTS (Actionable fixes)\n"
+        "- Provide concrete rewrite suggestions.\n"
+        "- Add missing technologies.\n"
+        "- Improve wording using measurable impact.\n\n"
+        "💡 PRO TIPS\n"
+        "- Provide industry-level advice.\n"
+        "- Include what recruiters actually look for.\n\n"
+        "2) Use bullet points, clear sections, and a professional tone.\n"
+        "3) Be specific. Avoid vague advice.\n"
+        "4) If resume and job description mismatch, explicitly explain the mismatch.\n"
+        "5) If context is missing, say so briefly and continue with best-effort guidance.\n\n"
         f"Conversation history:\n{history_blob}\n\n"
         f"Resume:\n{resume_blob or 'Not provided'}\n\n"
-        f"Job description:\n{job_description or 'Not provided'}\n\n"
+        f"Extracted Skills:\n{json.dumps(extracted_skills, ensure_ascii=True)}\n\n"
+        f"ATS Score:\n{ats_score}\n\n"
+        f"Job Description:\n{job_description or 'Not provided'}\n\n"
         f"Additional context:\n{context_blob}\n\n"
-        f"User message:\n{message}\n\n"
-        "Respond like a helpful mentor with:\n"
-        "- Clear explanations\n"
-        "- Bullet points\n"
-        "- Actionable advice\n"
-        "- ATS optimization tips\n"
-        "- Industry-level feedback\n\n"
-        "Keep answers practical and concise. If information is missing, state assumptions briefly."
+        f"User Question:\n{message}\n"
     )
+
+
+def _clean_markdown(text: str) -> str:
+    """Normalize markdown-like output for consistent rendering."""
+    cleaned = (text or "").replace("\r", "").strip()
+    cleaned = cleaned.replace("•", "- ")
+    cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
+    return cleaned
+
+
+def _has_required_sections(text: str) -> bool:
+    """Check whether output contains the required section headers."""
+    required_headers = [
+        "🔍 ATS SCORE ANALYSIS",
+        "🚨 TOP ISSUES",
+        "✅ IMPROVEMENTS",
+        "💡 PRO TIPS",
+    ]
+    return all(header in text for header in required_headers)
+
+
+def _to_structured_sections(text: str) -> str:
+    """Coerce free-form response into required recruiter-style sections."""
+    cleaned = _clean_markdown(text)
+    if _has_required_sections(cleaned):
+        return cleaned
+
+    summary = cleaned.splitlines()[0].strip() if cleaned else "Resume needs stronger job alignment and quantified impact."
+    return (
+        "🔍 ATS SCORE ANALYSIS\n"
+        f"- {summary}\n"
+        "- Score is primarily driven by skill match depth, ATS keyword alignment, and quantified outcomes.\n\n"
+        "🚨 TOP ISSUES (3–5 points)\n"
+        "- Missing explicit job-critical keywords from the target role.\n"
+        "- Bullets are not consistently quantified with measurable impact.\n"
+        "- Resume language may be too generic for technical screening.\n\n"
+        "✅ IMPROVEMENTS (Actionable fixes)\n"
+        "- Rewrite bullets using action verb + metric + outcome format.\n"
+        "- Add role-aligned technologies from the job description in context.\n"
+        "- Prioritize recent, relevant projects with production impact.\n\n"
+        "💡 PRO TIPS\n"
+        "- Recruiters scan quickly for exact stack match and impact metrics first.\n"
+        "- Put strongest role-aligned achievements in the top third of the resume."
+    )
+
+
+def _is_weak_response(text: str) -> bool:
+    """Heuristic quality gate for one-shot regeneration."""
+    cleaned = _clean_markdown(text)
+    if len(cleaned) < 220:
+        return True
+    if cleaned.count("- ") < 6:
+        return True
+    return not _has_required_sections(cleaned)
 
 
 def _fallback_reply(message: str, extra_context: dict[str, Any]) -> str:
@@ -87,23 +159,43 @@ def generate_mentor_reply_with_meta(data: dict[str, Any]) -> tuple[str, dict[str
     chat_history = _normalize_history(data.get("chat_history", []) or [])
     extra_context = data.get("extra_context", {}) or {}
 
+    prompt = _build_prompt(message, resume_text, chat_history, extra_context)
     reply, meta = generate_text_with_resilience(
         model=settings.gemini_model,
         fallback_model=settings.gemini_fallback_model,
-        contents=_build_prompt(message, resume_text, chat_history, extra_context),
+        contents=prompt,
         config=build_generation_config(
             max_output_tokens=800,
             temperature=0.35,
         ),
     )
     if reply:
-        return reply, {
+        regenerated = False
+        if _is_weak_response(reply):
+            retry_prompt = (
+                f"{prompt}\n\n"
+                "The previous draft was weak. Regenerate once with higher specificity, strict section headers, "
+                "and concrete role-aligned technical recommendations."
+            )
+            second_reply, second_meta = generate_text_with_resilience(
+                model=settings.gemini_model,
+                fallback_model=settings.gemini_fallback_model,
+                contents=retry_prompt,
+                config=build_generation_config(max_output_tokens=900, temperature=0.25),
+            )
+            if second_reply:
+                reply = second_reply
+                meta = second_meta
+                regenerated = True
+
+        return _to_structured_sections(reply), {
             **meta,
+            "regenerated_once": regenerated,
             "degraded": meta.get("source") != "gemini_primary",
         }
 
     logger.warning("Gemini mentor chat unavailable; using deterministic fallback. reason=%s", meta.get("reason"))
-    return _fallback_reply(message, extra_context), {
+    return _to_structured_sections(_fallback_reply(message, extra_context)), {
         "provider": "deterministic-fallback",
         "source": "fallback",
         "reason": meta.get("reason", "gemini_unavailable"),
