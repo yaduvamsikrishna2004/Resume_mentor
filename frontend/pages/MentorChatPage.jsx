@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { motion } from "framer-motion";
 import { Link } from "react-router-dom";
 
 import { mentorChat } from "../src/api/client";
@@ -12,12 +13,15 @@ function MentorChatPage() {
 
   const mentorContext = useMemo(
     () => ({
+      resume_filename: state.filename || "",
+      extracted_skills: state.analysis?.skills || [],
+      resume_preview: state.rawTextPreview || "",
       ats_score: state.comparison?.ats_score ?? null,
       missing_skills: state.comparison?.missing_skills || [],
       matching_skills: state.comparison?.matching_skills || [],
       suggestions: state.suggestions || []
     }),
-    [state.comparison, state.suggestions]
+    [state.analysis?.skills, state.comparison, state.filename, state.rawTextPreview, state.suggestions]
   );
 
   async function handleMentorChat(event) {
@@ -40,6 +44,7 @@ function MentorChatPage() {
       const response = await mentorChat({
         message,
         resumeId: state.resumeId || undefined,
+        resumeText: state.rawResumeText || state.rawTextPreview || "",
         chatHistory: state.mentorChatHistory.slice(-10),
         extraContext: mentorContext
       });
@@ -91,8 +96,10 @@ function MentorChatPage() {
             {state.mentorChatHistory.map((message, index) => {
               const isAssistant = message.role === "assistant";
               return (
-                <div
+                <motion.div
                   key={`${message.role}-${index}`}
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
                   className={`max-w-3xl whitespace-pre-wrap rounded-2xl px-4 py-3 text-sm sm:text-base ${
                     isAssistant
                       ? "self-start bg-cyan-100/15 text-cyan-50"
@@ -100,7 +107,7 @@ function MentorChatPage() {
                   }`}
                 >
                   {message.content}
-                </div>
+                </motion.div>
               );
             })}
           </div>

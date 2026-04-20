@@ -47,7 +47,7 @@ class Settings:
     mongo_db_name: str = os.getenv("MONGO_DB_NAME", "resume_mentor")
     mongo_collection_name: str = os.getenv("MONGO_COLLECTION_NAME", "resumes")
     gemini_api_key: str = os.getenv("GEMINI_API_KEY", "").strip()
-    gemini_model: str = os.getenv("GEMINI_MODEL", "gemini-3-flash-preview")
+    gemini_model: str = os.getenv("GEMINI_MODEL", "gemini-pro")
     gemini_fallback_model: str = os.getenv("GEMINI_FALLBACK_MODEL", "gemini-2.5-flash").strip()
     gemini_enabled: bool = _as_bool(os.getenv("GEMINI_ENABLED"), default=True)
     gemini_timeout_seconds: float = _as_float(os.getenv("GEMINI_TIMEOUT_SECONDS"), 12.0, min_value=3.0, max_value=120.0)

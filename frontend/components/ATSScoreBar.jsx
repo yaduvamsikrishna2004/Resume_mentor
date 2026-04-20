@@ -3,8 +3,9 @@ function ATSScoreBar({ score = 0 }) {
     <div className="glass-card rounded-3xl p-5">
       <div className="mb-3 flex items-center justify-between">
         <p className="font-display text-lg text-white">ATS Compatibility</p>
-        <span className="rounded-full bg-cyan-100/15 px-3 py-1 text-sm text-cyan-50">{score}%</span>
+        <span className="rounded-full bg-cyan-100/15 px-3 py-1 text-sm font-semibold text-cyan-50">{score}%</span>
       </div>
+      <p className="mb-3 text-sm text-cyan-100/80">Higher score means your resume better reflects target job requirements.</p>
       <div className="h-3 overflow-hidden rounded-full bg-cyan-100/15">
         <div
           className="h-full rounded-full bg-gradient-to-r from-teal-400 via-emerald-300 to-lime-300 transition-all duration-500"

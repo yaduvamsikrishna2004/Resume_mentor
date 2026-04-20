@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException
 
-from models.schemas import ApiResponse, CompareJobRequest, MentorChatRequest, SuggestionRequest
+from models.schemas import ApiResponse, ChatApiRequest, CompareJobRequest, MentorChatRequest, SuggestionRequest
 from nlp.extractor import extract_job_skills, extract_resume_entities
 from utils.analysis import compare_skills
 from utils.mentor_chat import generate_mentor_reply_with_meta
@@ -97,3 +97,33 @@ def mentor_chat(payload: MentorChatRequest) -> ApiResponse:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Unexpected mentor chat error: {exc}") from exc
+
+
+@router.post("/api/chat", response_model=ApiResponse)
+def api_chat(payload: ChatApiRequest) -> ApiResponse:
+    """Production chat endpoint for frontend chatbot integration."""
+    try:
+        resume_text = (payload.resume_text or "").strip()
+        if payload.resume_id and not resume_text:
+            document = get_resume_by_id(payload.resume_id)
+            resume_text = document.get("raw_text", "")
+
+        # Route resume_context into prompt context so Gemini answers are resume-specific.
+        reply, meta = generate_mentor_reply_with_meta(
+            {
+                "message": payload.message,
+                "resume_text": resume_text,
+                "chat_history": [item.model_dump() for item in payload.chat_history],
+                "extra_context": payload.resume_context,
+            }
+        )
+        return ApiResponse(
+            message="Chat response generated successfully.",
+            data={"reply": reply, "meta": meta},
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Unexpected chat error: {exc}") from exc

@@ -117,7 +117,7 @@ export async function getSuggestions(missingSkills, extraContext = {}) {
 
 export async function mentorChat({ message, resumeId, resumeText = "", chatHistory = [], extraContext = {} }) {
   return requestJson(
-    `${API_BASE_URL}/mentor_chat`,
+    `${API_BASE_URL}/api/chat`,
     {
       method: "POST",
       headers: {
@@ -128,7 +128,7 @@ export async function mentorChat({ message, resumeId, resumeText = "", chatHisto
         resume_id: resumeId,
         resume_text: resumeText,
         chat_history: chatHistory,
-        extra_context: extraContext
+        resume_context: extraContext
       })
     },
     { timeoutMs: 22000, retries: 1 }

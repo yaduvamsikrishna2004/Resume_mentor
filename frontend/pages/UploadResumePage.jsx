@@ -1,7 +1,10 @@
 import { useState } from "react";
+import { motion } from "framer-motion";
+import { Sparkles } from "lucide-react";
 import { Link } from "react-router-dom";
 
 import FileDropzone from "../components/FileDropzone";
+import SkeletonBlock from "../components/ui/SkeletonBlock";
 import { uploadResume } from "../src/api/client";
 import { useResumeMentor } from "../src/context/ResumeMentorContext";
 
@@ -32,6 +35,21 @@ function UploadResumePage() {
   return (
     <section className="grid gap-6 lg:grid-cols-[1.2fr_1fr]">
       <div className="space-y-5">
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4 }}
+          className="glass-card rounded-3xl p-5"
+        >
+          <p className="inline-flex items-center gap-2 rounded-full bg-cyan-100/15 px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-cyan-50">
+            <Sparkles size={13} />
+            Smart Resume Intake
+          </p>
+          <h2 className="mt-3 font-display text-2xl text-white">Upload your resume and start analysis</h2>
+          <p className="mt-2 text-sm text-cyan-50/85">
+            Drag and drop a PDF or DOCX. We parse your content, extract key skills, and prepare AI recommendations.
+          </p>
+        </motion.div>
         <FileDropzone onFileSelect={handleUpload} isLoading={isLoading} />
         {error ? (
           <p className="rounded-2xl border border-rose-200/30 bg-rose-200/10 px-4 py-3 text-sm text-rose-100">{error}</p>
@@ -40,22 +58,30 @@ function UploadResumePage() {
 
       <aside className="glass-card rounded-3xl p-5">
         <p className="font-display text-lg text-white">Current Resume Snapshot</p>
-        <div className="mt-4 space-y-2 text-sm text-cyan-50/90">
-          <p>
-            <span className="text-cyan-100/70">File:</span> {state.filename || "No resume uploaded"}
-          </p>
-          <p>
-            <span className="text-cyan-100/70">Resume ID:</span> {state.resumeId || "-"}
-          </p>
-          <p>
-            <span className="text-cyan-100/70">Skills detected:</span>{" "}
-            {state.analysis?.skills?.length || 0}
-          </p>
-          <p>
-            <span className="text-cyan-100/70">Education lines:</span>{" "}
-            {state.analysis?.education?.length || 0}
-          </p>
-        </div>
+        {isLoading ? (
+          <div className="mt-4 space-y-2">
+            <SkeletonBlock className="h-4 w-4/5" />
+            <SkeletonBlock className="h-4 w-3/5" />
+            <SkeletonBlock className="h-4 w-2/5" />
+          </div>
+        ) : (
+          <div className="mt-4 space-y-2 text-sm text-cyan-50/90">
+            <p>
+              <span className="text-cyan-100/70">File:</span> {state.filename || "No resume uploaded"}
+            </p>
+            <p>
+              <span className="text-cyan-100/70">Resume ID:</span> {state.resumeId || "-"}
+            </p>
+            <p>
+              <span className="text-cyan-100/70">Skills detected:</span>{" "}
+              {state.analysis?.skills?.length || 0}
+            </p>
+            <p>
+              <span className="text-cyan-100/70">Education lines:</span>{" "}
+              {state.analysis?.education?.length || 0}
+            </p>
+          </div>
+        )}
 
         <p className="mt-4 rounded-2xl bg-cyan-100/10 p-3 text-xs leading-5 text-cyan-100/80">
           {state.rawTextPreview || "Parsed text preview will appear after upload."}

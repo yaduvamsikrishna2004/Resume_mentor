@@ -1,4 +1,6 @@
 import { useRef, useState } from "react";
+import { motion } from "framer-motion";
+import { FileUp } from "lucide-react";
 
 function FileDropzone({ onFileSelect, isLoading }) {
   const inputRef = useRef(null);
@@ -13,7 +15,9 @@ function FileDropzone({ onFileSelect, isLoading }) {
   }
 
   return (
-    <div
+    <motion.div
+      whileHover={{ y: -3 }}
+      transition={{ duration: 0.2 }}
       role="button"
       tabIndex={0}
       onClick={() => inputRef.current?.click()}
@@ -40,12 +44,15 @@ function FileDropzone({ onFileSelect, isLoading }) {
         onChange={(event) => handleFiles(event.target.files)}
         disabled={isLoading}
       />
+      <div className="mx-auto mb-4 inline-flex rounded-2xl bg-cyan-100/15 p-3 text-accent">
+        <FileUp size={26} />
+      </div>
       <p className="font-display text-2xl text-white">Drop resume here</p>
       <p className="mt-2 text-cyan-100">or click to upload PDF/DOCX</p>
       <p className="mt-6 text-xs uppercase tracking-widest text-cyan-100/70">
         {isLoading ? "Uploading and parsing..." : "Production-ready parser + NLP pipeline"}
       </p>
-    </div>
+    </motion.div>
   );
 }
 

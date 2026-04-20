@@ -25,6 +25,7 @@ async def upload_resume(file: UploadFile = File(...)) -> ApiResponse:
                 "resume_id": resume_id,
                 "filename": file.filename,
                 "raw_text_preview": raw_text[:500],
+                "raw_text": raw_text,
                 "extracted": extracted,
             },
         )

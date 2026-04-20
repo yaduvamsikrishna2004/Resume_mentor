@@ -44,6 +44,16 @@ class MentorChatRequest(BaseModel):
     extra_context: dict[str, Any] = Field(default_factory=dict, description="Optional structured context")
 
 
+class ChatApiRequest(BaseModel):
+    """Request payload for the production chat endpoint."""
+
+    message: str = Field(..., min_length=1, description="User message for AI chat")
+    resume_id: str | None = Field(default=None, description="Mongo document id of uploaded resume")
+    resume_text: str | None = Field(default=None, description="Raw resume text")
+    resume_context: dict[str, Any] = Field(default_factory=dict, description="Structured resume context and insights")
+    chat_history: list[ChatMessage] = Field(default_factory=list, description="Recent chat history")
+
+
 class ApiResponse(BaseModel):
     """Standardized API response wrapper."""
 

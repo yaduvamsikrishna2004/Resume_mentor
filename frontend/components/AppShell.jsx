@@ -1,6 +1,10 @@
 import { Link, useLocation } from "react-router-dom";
+import { MoonStar, Sun } from "lucide-react";
+
+import { useResumeMentor } from "../src/context/ResumeMentorContext";
 
 const navItems = [
+  { to: "/", label: "Home" },
   { to: "/upload", label: "Upload Resume" },
   { to: "/chat", label: "Skill Gap Analysis" },
   { to: "/mentor", label: "Gemini Chat" },
@@ -9,6 +13,8 @@ const navItems = [
 
 function AppShell({ children }) {
   const { pathname } = useLocation();
+  const { state, actions } = useResumeMentor();
+  const isLight = state.themeMode === "light";
 
   return (
     <div className="min-h-screen text-neutral">
@@ -21,9 +27,18 @@ function AppShell({ children }) {
                 Analyze resumes, compare job fit, and close skill gaps with targeted guidance.
               </p>
             </div>
-            <nav className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={actions.toggleTheme}
+                className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-cyan-200/10 text-cyan-100 transition hover:bg-cyan-200/20"
+                aria-label="Toggle theme"
+              >
+                {isLight ? <MoonStar size={18} /> : <Sun size={18} />}
+              </button>
+              <nav className="flex flex-wrap gap-2">
               {navItems.map((item) => {
-                const active = pathname.startsWith(item.to);
+                const active = item.to === "/" ? pathname === "/" : pathname.startsWith(item.to);
                 return (
                   <Link
                     key={item.to}
@@ -38,7 +53,8 @@ function AppShell({ children }) {
                   </Link>
                 );
               })}
-            </nav>
+              </nav>
+            </div>
           </div>
         </header>
         <main className="pb-8">{children}</main>

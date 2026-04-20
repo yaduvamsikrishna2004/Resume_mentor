@@ -7,13 +7,16 @@ function SkillListCard({ title, skills = [], color = "cyan" }) {
 
   return (
     <section className="glass-card rounded-3xl p-5">
-      <p className="mb-4 font-display text-lg text-white">{title}</p>
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <p className="font-display text-lg text-white">{title}</p>
+        <span className="rounded-full bg-cyan-100/15 px-2.5 py-1 text-xs font-semibold text-cyan-50">{skills.length}</span>
+      </div>
       <div className="flex flex-wrap gap-2">
         {skills.length ? (
           skills.map((skill) => (
             <span
               key={skill}
-              className={`rounded-full border px-3 py-1 text-sm capitalize ${colorClasses[color] || colorClasses.cyan}`}
+              className={`rounded-full border px-3 py-1 text-sm capitalize transition hover:-translate-y-[1px] ${colorClasses[color] || colorClasses.cyan}`}
             >
               {skill}
             </span>

@@ -1,13 +1,22 @@
+import { motion } from "framer-motion";
+import { WandSparkles } from "lucide-react";
+
 function ChatPanel({ messages, onAnalyzeSubmit, isAnalyzeLoading }) {
   return (
     <section className="glass-card rounded-3xl p-4 sm:p-6">
+      <div className="mb-4 flex items-center gap-2 text-cyan-100/90">
+        <WandSparkles size={16} />
+        <p className="text-sm font-semibold uppercase tracking-[0.16em]">Skill Gap Analysis</p>
+      </div>
       <div className="max-h-[480px] overflow-y-auto pr-1">
         <div className="flex flex-col gap-3">
           {messages.map((message, index) => {
             const isAssistant = message.role === "assistant";
             return (
-              <div
+              <motion.div
                 key={`${message.role}-${index}`}
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
                 className={`max-w-3xl rounded-2xl px-4 py-3 text-sm sm:text-base ${
                   isAssistant
                     ? "self-start bg-cyan-100/15 text-cyan-50"
@@ -15,7 +24,7 @@ function ChatPanel({ messages, onAnalyzeSubmit, isAnalyzeLoading }) {
                 }`}
               >
                 {message.content}
-              </div>
+              </motion.div>
             );
           })}
         </div>

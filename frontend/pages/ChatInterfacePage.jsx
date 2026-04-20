@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { LoaderCircle } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 
 import ChatPanel from "../components/ChatPanel";
@@ -47,6 +48,7 @@ function ChatInterfacePage() {
         resume_skills: compareResponse.data.resume_skills || []
       });
       actions.setSuggestions(suggestionResponse.data.suggestions || []);
+      actions.saveCurrentResult(`Analysis for ${new Date().toLocaleDateString()}`);
 
       actions.pushAnalysisMessage({
         role: "assistant",
@@ -83,6 +85,15 @@ function ChatInterfacePage() {
         onAnalyzeSubmit={handleAnalyze}
         isAnalyzeLoading={isAnalyzing}
       />
+
+      {isAnalyzing ? (
+        <div className="glass-card rounded-2xl p-4 text-sm text-cyan-50/90">
+          <p className="inline-flex items-center gap-2">
+            <LoaderCircle size={16} className="animate-spin" />
+            Running NLP analysis, ATS scoring, and AI recommendation generation...
+          </p>
+        </div>
+      ) : null}
 
       {error ? (
         <p className="rounded-2xl border border-rose-200/30 bg-rose-200/10 px-4 py-3 text-sm text-rose-100">{error}</p>

@@ -34,6 +34,7 @@ def _build_prompt(message: str, resume_text: str, chat_history: list[dict[str, s
     resume_blob = resume_text[:2200]
 
     return (
+        "You are a resume mentor. Analyze this resume and answer the question.\n"
         "You are an AI Resume Mentor. Give practical, concise, and actionable advice.\n"
         "Focus on resume improvement, skill gaps, interview prep, and job alignment.\n"
         "Use bullet points only if the user asks for a list; otherwise keep to short paragraphs.\n"
