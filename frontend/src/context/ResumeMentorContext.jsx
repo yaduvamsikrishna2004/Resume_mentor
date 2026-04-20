@@ -115,16 +115,60 @@ export function ResumeMentorProvider({ children }) {
           if (!prev.comparison) {
             return prev;
           }
+          const normalizedLabel = "Saved Analysis";
+          const currentComparison = prev.comparison || {};
+          const currentSuggestions = prev.suggestions || [];
+
+          const isMeaningful =
+            Number(currentComparison?.ats_score || 0) > 0 ||
+            (currentComparison?.missing_skills || []).length > 0 ||
+            (currentComparison?.matching_skills || []).length > 0 ||
+            currentSuggestions.length > 0;
+          if (!isMeaningful) {
+            return prev;
+          }
+
+          const duplicate = prev.savedResults.find((item) => {
+            const sameScore = Number(item?.comparison?.ats_score || 0) === Number(currentComparison?.ats_score || 0);
+            const sameMissing =
+              JSON.stringify(item?.comparison?.missing_skills || []) ===
+              JSON.stringify(currentComparison?.missing_skills || []);
+            const sameMatching =
+              JSON.stringify(item?.comparison?.matching_skills || []) ===
+              JSON.stringify(currentComparison?.matching_skills || []);
+            return sameScore && sameMissing && sameMatching;
+          });
+          if (duplicate) {
+            return prev;
+          }
+
           const snapshot = {
             id: `${Date.now()}`,
-            label,
+            label: normalizedLabel,
             timestamp: new Date().toISOString(),
-            comparison: prev.comparison,
-            suggestions: prev.suggestions
+            comparison: currentComparison,
+            suggestions: currentSuggestions,
+            resume_version: prev.resumeVersions[0]?.label || "",
+            summary:
+              currentSuggestions[0]?.learning_suggestion ||
+              `Focus on ${(currentComparison?.missing_skills || []).slice(0, 2).join(", ") || "role alignment"}`
           };
           return {
             ...prev,
             savedResults: [snapshot, ...prev.savedResults].slice(0, 8)
+          };
+        });
+      },
+      loadSavedResult(resultId) {
+        setState((prev) => {
+          const found = prev.savedResults.find((item) => item.id === resultId);
+          if (!found) {
+            return prev;
+          }
+          return {
+            ...prev,
+            comparison: found.comparison || prev.comparison,
+            suggestions: found.suggestions || prev.suggestions
           };
         });
       },

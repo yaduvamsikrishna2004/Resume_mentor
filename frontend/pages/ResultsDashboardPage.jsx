@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { Download, History, Save } from "lucide-react";
+import { Download, Save } from "lucide-react";
 
 import ATSScoreBar from "../components/ATSScoreBar";
 import SkillListCard from "../components/SkillListCard";
@@ -148,28 +148,6 @@ function ResultsDashboardPage() {
           Weighted coverage: {Number(breakdown.matched_required_weight || 0).toFixed(2)} / {Number(breakdown.total_required_weight || 0).toFixed(2)}
         </p>
       </section>
-
-      <section className="glass-card rounded-3xl p-5">
-        <p className="mb-3 inline-flex items-center gap-2 font-display text-lg text-white">
-          <History size={18} />
-          Recent Saved Results
-        </p>
-        <div className="grid gap-2">
-          {state.savedResults.length ? (
-            state.savedResults.map((item) => (
-              <article key={item.id} className="rounded-2xl border border-cyan-100/20 bg-cyan-100/5 p-3">
-                <p className="text-sm font-semibold text-cyan-50">{item.label}</p>
-                <p className="text-xs text-cyan-100/70">
-                  {new Date(item.timestamp).toLocaleString()} - ATS {item.comparison?.ats_score ?? 0}%
-                </p>
-              </article>
-            ))
-          ) : (
-            <p className="text-sm text-cyan-100/75">No saved results yet.</p>
-          )}
-        </div>
-      </section>
-
       <section className="glass-card rounded-3xl p-5">
         <p className="mb-3 font-display text-lg text-white">Resume Versions</p>
         <div className="grid gap-2">

@@ -3,9 +3,10 @@ import { Link, useLocation } from "react-router-dom";
 const navItems = [
   { to: "/", label: "Home" },
   { to: "/upload", label: "Upload Resume" },
-  { to: "/chat", label: "Skill Gap Analysis" },
-  { to: "/mentor", label: "Gemini Chat" },
-  { to: "/results", label: "Results Dashboard" }
+  { to: "/chat", label: "Analysis" },
+  { to: "/mentor", label: "Chat" },
+  { to: "/results", label: "Dashboard" },
+  { to: "/history", label: "History" }
 ];
 
 function AppShell({ children }) {

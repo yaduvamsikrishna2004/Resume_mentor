@@ -2,6 +2,7 @@ import { Route, Routes } from "react-router-dom";
 
 import AppShell from "../components/AppShell";
 import ChatInterfacePage from "../pages/ChatInterfacePage";
+import HistoryPage from "../pages/HistoryPage";
 import HomePage from "../pages/HomePage";
 import MentorChatPage from "../pages/MentorChatPage";
 import ResultsDashboardPage from "../pages/ResultsDashboardPage";
@@ -16,6 +17,7 @@ function App() {
         <Route path="/chat" element={<ChatInterfacePage />} />
         <Route path="/mentor" element={<MentorChatPage />} />
         <Route path="/results" element={<ResultsDashboardPage />} />
+        <Route path="/history" element={<HistoryPage />} />
       </Routes>
     </AppShell>
   );
