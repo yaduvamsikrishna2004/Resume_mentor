@@ -11,10 +11,13 @@ const initialState = {
   filename: "",
   rawTextPreview: "",
   rawResumeText: "",
+  lastJobDescription: "",
   analysis: null,
   comparison: null,
   suggestions: [],
   savedResults: [],
+  savedMentorChats: [],
+  resumeVersions: [],
   analysisHistory: [
     {
       role: "assistant",
@@ -70,10 +73,13 @@ export function ResumeMentorProvider({ children }) {
       filename: state.filename,
       rawTextPreview: state.rawTextPreview,
       rawResumeText: state.rawResumeText,
+      lastJobDescription: state.lastJobDescription,
       analysis: state.analysis,
       comparison: state.comparison,
       suggestions: state.suggestions,
       savedResults: state.savedResults,
+      savedMentorChats: state.savedMentorChats,
+      resumeVersions: state.resumeVersions,
       analysisHistory: state.analysisHistory,
       mentorChatHistory: state.mentorChatHistory
     };
@@ -97,6 +103,9 @@ export function ResumeMentorProvider({ children }) {
       },
       setComparison(comparison) {
         setState((prev) => ({ ...prev, comparison }));
+      },
+      setJobDescription(jobDescription) {
+        setState((prev) => ({ ...prev, lastJobDescription: jobDescription }));
       },
       setSuggestions(suggestions) {
         setState((prev) => ({ ...prev, suggestions }));
@@ -130,6 +139,59 @@ export function ResumeMentorProvider({ children }) {
           ...prev,
           mentorChatHistory: [...prev.mentorChatHistory, message]
         }));
+      },
+      appendToLastMentorMessage(delta) {
+        setState((prev) => {
+          const history = [...prev.mentorChatHistory];
+          if (!history.length || history[history.length - 1].role !== "assistant") {
+            history.push({ role: "assistant", content: delta });
+          } else {
+            history[history.length - 1] = {
+              ...history[history.length - 1],
+              content: `${history[history.length - 1].content || ""}${delta}`
+            };
+          }
+          return { ...prev, mentorChatHistory: history };
+        });
+      },
+      saveMentorChatSession(label = "Mentor session") {
+        setState((prev) => {
+          const snapshot = {
+            id: `${Date.now()}`,
+            label,
+            timestamp: new Date().toISOString(),
+            messages: prev.mentorChatHistory
+          };
+          return {
+            ...prev,
+            savedMentorChats: [snapshot, ...prev.savedMentorChats].slice(0, 12)
+          };
+        });
+      },
+      loadMentorChatSession(sessionId) {
+        setState((prev) => {
+          const found = prev.savedMentorChats.find((item) => item.id === sessionId);
+          if (!found) {
+            return prev;
+          }
+          return {
+            ...prev,
+            mentorChatHistory: found.messages
+          };
+        });
+      },
+      addResumeVersion(versionPayload) {
+        setState((prev) => {
+          const version = {
+            id: `${Date.now()}`,
+            timestamp: new Date().toISOString(),
+            ...versionPayload
+          };
+          return {
+            ...prev,
+            resumeVersions: [version, ...prev.resumeVersions].slice(0, 12)
+          };
+        });
       },
       resetMentorChat() {
         setState((prev) => ({

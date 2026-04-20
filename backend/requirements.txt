@@ -7,3 +7,4 @@ docx2txt
 pymongo
 pydantic
 google-genai
+python-dotenv

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import time
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
 from dataclasses import dataclass
 from functools import lru_cache
 from threading import Lock
@@ -148,30 +149,40 @@ def generate_text_with_resilience(
 
     last_error = ""
     for index, candidate_model in enumerate(attempted_models):
-        try:
-            response = client.models.generate_content(
-                model=candidate_model,
-                contents=contents,
-                config=config,
-            )
-            response_text = str(getattr(response, "text", "") or "").strip()
-            if not response_text:
-                raise RuntimeError("Gemini returned empty text response.")
+        for attempt in range(settings.gemini_retry_attempts):
+            try:
+                with ThreadPoolExecutor(max_workers=1) as executor:
+                    future = executor.submit(
+                        client.models.generate_content,
+                        model=candidate_model,
+                        contents=contents,
+                        config=config,
+                    )
+                    response = future.result(timeout=settings.gemini_timeout_seconds)
+                response_text = str(getattr(response, "text", "") or "").strip()
+                if not response_text:
+                    raise RuntimeError("Gemini returned empty text response.")
 
-            _mark_gemini_success()
-            source = "gemini_primary" if index == 0 else "gemini_fallback_model"
-            return response_text, {
-                "provider": "gemini",
-                "source": source,
-                "model_used": candidate_model,
-                "attempted_models": attempted_models,
-                "reason": "ok",
-                "latency_ms": round((time.perf_counter() - started) * 1000, 2),
-                **get_gemini_health_snapshot(),
-            }
-        except Exception as exc:  # pragma: no cover - network/API runtime branch
-            last_error = str(exc)
-            continue
+                _mark_gemini_success()
+                source = "gemini_primary" if index == 0 else "gemini_fallback_model"
+                return response_text, {
+                    "provider": "gemini",
+                    "source": source,
+                    "model_used": candidate_model,
+                    "attempted_models": attempted_models,
+                    "retry_attempts": settings.gemini_retry_attempts,
+                    "attempt_index": attempt + 1,
+                    "reason": "ok",
+                    "latency_ms": round((time.perf_counter() - started) * 1000, 2),
+                    **get_gemini_health_snapshot(),
+                }
+            except FuturesTimeoutError:
+                last_error = f"gemini_timeout_after_{settings.gemini_timeout_seconds}s"
+            except Exception as exc:  # pragma: no cover - network/API runtime branch
+                last_error = str(exc)
+
+            if attempt < settings.gemini_retry_attempts - 1:
+                time.sleep(0.35 * (attempt + 1))
 
     _mark_gemini_failure(last_error or "unknown_error")
     return None, {

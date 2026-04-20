@@ -134,3 +134,105 @@ export async function mentorChat({ message, resumeId, resumeText = "", chatHisto
     { timeoutMs: 22000, retries: 1 }
   );
 }
+
+export async function streamMentorChat(
+  { message, resumeId, resumeText = "", jobDescription = "", chatHistory = [], resumeContext = {} },
+  { onChunk, onMeta, onDone, retries = 1 }
+) {
+  for (let attempt = 0; attempt <= retries; attempt += 1) {
+    try {
+      const response = await fetchWithTimeout(
+        `${API_BASE_URL}/api/chat`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Accept: "application/x-ndjson"
+          },
+          body: JSON.stringify({
+            message,
+            resume_id: resumeId,
+            resume_text: resumeText,
+            job_description: jobDescription,
+            resume_context: resumeContext,
+            chat_history: chatHistory,
+            stream: true
+          })
+        },
+        30000
+      );
+
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}));
+        throw new Error(payload?.detail || payload?.message || "Failed to start streaming chat.");
+      }
+
+      if (!response.body) {
+        throw new Error("Streaming is not supported in this browser.");
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder("utf-8");
+      let buffered = "";
+
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) {
+          break;
+        }
+        buffered += decoder.decode(value, { stream: true });
+        const lines = buffered.split("\n");
+        buffered = lines.pop() || "";
+
+        lines.forEach((line) => {
+          const trimmed = line.trim();
+          if (!trimmed) {
+            return;
+          }
+          let parsed = {};
+          try {
+            parsed = JSON.parse(trimmed);
+          } catch {
+            return;
+          }
+          if (parsed.type === "meta") {
+            onMeta?.(parsed.data || {});
+            return;
+          }
+          if (parsed.type === "chunk") {
+            onChunk?.(parsed.delta || "");
+            return;
+          }
+          if (parsed.type === "done") {
+            onDone?.(parsed.meta || {});
+          }
+        });
+      }
+      return;
+    } catch (error) {
+      if (attempt >= retries) {
+        throw error;
+      }
+      await delay(400 * (attempt + 1));
+    }
+  }
+}
+
+export async function improveResume({ resumeId, resumeText = "", jobDescription = "", focusAreas = [] }) {
+  return requestJson(
+    `${API_BASE_URL}/improve_resume`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        resume_id: resumeId,
+        resume_text: resumeText,
+        job_description: jobDescription,
+        focus_areas: focusAreas
+      })
+    },
+    { timeoutMs: 25000, retries: 1 }
+  );
+}

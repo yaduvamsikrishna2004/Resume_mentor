@@ -10,7 +10,7 @@ export default {
     extend: {
       fontFamily: {
         display: ["Space Grotesk", "sans-serif"],
-        body: ["Public Sans", "sans-serif"]
+        body: ["Inter", "sans-serif"]
       },
       colors: {
         surface: "#0d1b2a",

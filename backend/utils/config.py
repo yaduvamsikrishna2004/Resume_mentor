@@ -2,6 +2,25 @@
 
 import os
 from dataclasses import dataclass
+from pathlib import Path
+
+try:
+    from dotenv import load_dotenv
+except Exception:  # pragma: no cover - optional in some environments
+    load_dotenv = None
+
+
+def _load_local_env_file() -> None:
+    """Load backend/.env automatically so local runs work without shell exports."""
+    if load_dotenv is None:
+        return
+    backend_dir = Path(__file__).resolve().parents[1]
+    env_path = backend_dir / ".env"
+    if env_path.exists():
+        load_dotenv(env_path, override=False)
+
+
+_load_local_env_file()
 
 
 def _as_bool(raw_value: str | None, default: bool = False) -> bool:

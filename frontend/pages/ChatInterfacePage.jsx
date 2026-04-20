@@ -29,6 +29,7 @@ function ChatInterfacePage() {
 
     setError("");
     setIsAnalyzing(true);
+    actions.setJobDescription(jobDescription);
     actions.pushAnalysisMessage({ role: "user", content: jobDescription });
 
     try {

@@ -50,8 +50,19 @@ class ChatApiRequest(BaseModel):
     message: str = Field(..., min_length=1, description="User message for AI chat")
     resume_id: str | None = Field(default=None, description="Mongo document id of uploaded resume")
     resume_text: str | None = Field(default=None, description="Raw resume text")
+    job_description: str | None = Field(default=None, description="Target job description context")
     resume_context: dict[str, Any] = Field(default_factory=dict, description="Structured resume context and insights")
     chat_history: list[ChatMessage] = Field(default_factory=list, description="Recent chat history")
+    stream: bool = Field(default=False, description="Whether to return streaming response chunks")
+
+
+class ImproveResumeRequest(BaseModel):
+    """Request payload for auto-improving resume bullets."""
+
+    resume_id: str | None = Field(default=None, description="Mongo document id of uploaded resume")
+    resume_text: str | None = Field(default=None, description="Raw resume text")
+    job_description: str | None = Field(default=None, description="Optional role context")
+    focus_areas: list[str] = Field(default_factory=list, description="Optional improvement focus areas")
 
 
 class ApiResponse(BaseModel):

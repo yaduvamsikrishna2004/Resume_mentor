@@ -2,12 +2,23 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException
+import json
+import time
 
-from models.schemas import ApiResponse, ChatApiRequest, CompareJobRequest, MentorChatRequest, SuggestionRequest
+from fastapi import APIRouter, HTTPException, Request
+from fastapi.responses import StreamingResponse
+
+from models.schemas import (
+    ApiResponse,
+    ChatApiRequest,
+    CompareJobRequest,
+    ImproveResumeRequest,
+    MentorChatRequest,
+    SuggestionRequest,
+)
 from nlp.extractor import extract_job_skills, extract_resume_entities
 from utils.analysis import compare_skills
-from utils.mentor_chat import generate_mentor_reply_with_meta
+from utils.mentor_chat import generate_mentor_reply_stream, generate_mentor_reply_with_meta, improve_resume_with_meta
 from utils.resume_repository import get_resume_by_id
 from utils.suggestions import generate_ai_suggestions_with_meta
 
@@ -99,8 +110,8 @@ def mentor_chat(payload: MentorChatRequest) -> ApiResponse:
         raise HTTPException(status_code=500, detail=f"Unexpected mentor chat error: {exc}") from exc
 
 
-@router.post("/api/chat", response_model=ApiResponse)
-def api_chat(payload: ChatApiRequest) -> ApiResponse:
+@router.post("/api/chat")
+def api_chat(payload: ChatApiRequest, request: Request):
     """Production chat endpoint for frontend chatbot integration."""
     try:
         resume_text = (payload.resume_text or "").strip()
@@ -108,13 +119,49 @@ def api_chat(payload: ChatApiRequest) -> ApiResponse:
             document = get_resume_by_id(payload.resume_id)
             resume_text = document.get("raw_text", "")
 
+        prompt_context = {
+            **payload.resume_context,
+            "job_description": payload.job_description or payload.resume_context.get("job_description", ""),
+        }
+
+        should_stream = payload.stream or "application/x-ndjson" in request.headers.get("accept", "")
+
+        if should_stream:
+            chunks, meta = generate_mentor_reply_stream(
+                {
+                    "message": payload.message,
+                    "resume_text": resume_text,
+                    "chat_history": [item.model_dump() for item in payload.chat_history],
+                    "extra_context": prompt_context,
+                }
+            )
+
+            def _iter_stream():
+                started = time.perf_counter()
+                yield json.dumps({"type": "meta", "data": {"status": "started", "message": "Analyzing your resume..."}}) + "\n"
+                time.sleep(0.14)
+                for chunk in chunks:
+                    yield json.dumps({"type": "chunk", "delta": chunk}) + "\n"
+                    time.sleep(0.018)
+                yield json.dumps(
+                    {
+                        "type": "done",
+                        "meta": {
+                            **meta,
+                            "stream_latency_ms": round((time.perf_counter() - started) * 1000, 2),
+                        },
+                    }
+                ) + "\n"
+
+            return StreamingResponse(_iter_stream(), media_type="application/x-ndjson")
+
         # Route resume_context into prompt context so Gemini answers are resume-specific.
         reply, meta = generate_mentor_reply_with_meta(
             {
                 "message": payload.message,
                 "resume_text": resume_text,
                 "chat_history": [item.model_dump() for item in payload.chat_history],
-                "extra_context": payload.resume_context,
+                "extra_context": prompt_context,
             }
         )
         return ApiResponse(
@@ -127,3 +174,31 @@ def api_chat(payload: ChatApiRequest) -> ApiResponse:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Unexpected chat error: {exc}") from exc
+
+
+@router.post("/improve_resume", response_model=ApiResponse)
+def improve_resume(payload: ImproveResumeRequest) -> ApiResponse:
+    """Auto-improve resume bullets and return a version candidate."""
+    try:
+        resume_text = (payload.resume_text or "").strip()
+        if payload.resume_id and not resume_text:
+            document = get_resume_by_id(payload.resume_id)
+            resume_text = document.get("raw_text", "")
+
+        improved, meta = improve_resume_with_meta(
+            {
+                "resume_text": resume_text,
+                "job_description": payload.job_description or "",
+                "focus_areas": payload.focus_areas,
+            }
+        )
+        return ApiResponse(
+            message="Resume improvements generated successfully.",
+            data={"improvement": improved, "meta": meta},
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Unexpected improve_resume error: {exc}") from exc
